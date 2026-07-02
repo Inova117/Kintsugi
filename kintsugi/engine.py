@@ -24,7 +24,7 @@ from pydantic import ValidationError
 from .contract import JamSpec
 from .taxonomy import FailureCategory
 from .trace import Trace
-from .validate import TierResult, ValidationReport, validate
+from .validate import ValidationReport, validate
 
 Emit = Callable[[dict], None]
 
@@ -111,19 +111,31 @@ def run(
         return validate(html, spec, model=model, trace=trace,
                         prefer_browser=prefer_browser, run_judge=run_judge)
 
-    # --- plan (with a small retry: a stochastic model may emit a contract-violating spec) ---
+    def done_event(published: bool, rounds=None, path=None, category=None) -> dict:
+        return {
+            "type": "done", "published": published, "rounds": rounds, "path": path,
+            "category": category,
+            "tokens": trace.total_tokens, "latency_ms": round(trace.total_latency_ms, 1),
+        }
+
+    # --- plan (repairs itself: feed the contract error back so the model fixes the spec) ---
     spec: Optional[JamSpec] = None
-    for plan_try in range(2):
+    plan_prompt = prompt
+    for plan_try in range(3):
         try:
-            spec = model.plan(prompt, trace)
+            spec = model.plan(plan_prompt, trace)
             break
         except (ValidationError, ValueError) as e:
             _emit({"type": "plan_error", "attempt": plan_try, "error": str(e)[:300]})
-            if plan_try == 1:
-                result.final_category = FailureCategory.SCHEMA_CONTRACT
-                _emit({"type": "done", "published": False, "category": FailureCategory.SCHEMA_CONTRACT.value})
-                return result
-    assert spec is not None
+            plan_prompt = (
+                f"{prompt}\n\nYour previous spec was REJECTED: {str(e)[:300]}\n"
+                "EVERY outcome any option scores toward MUST have a matching persona. "
+                "Return corrected JSON."
+            )
+    else:  # never broke out -> all attempts failed the contract
+        result.final_category = FailureCategory.SCHEMA_CONTRACT
+        _emit(done_event(False, category=FailureCategory.SCHEMA_CONTRACT.value))
+        return result
     result.spec = spec
     _emit({"type": "plan", "title": spec.title, "theme": spec.theme,
            "outcomes": sorted(spec.outcomes_with_screens)})
@@ -158,15 +170,12 @@ def run(
             s.attributes["reason"] = f"still failing after {max_repairs} repairs"
 
     trace.save(out_dir / run_id)
-    _emit({
-        "type": "done",
-        "published": result.published,
-        "rounds": result.rounds_to_valid,
-        "path": str(result.published_path) if result.published_path else None,
-        "category": result.final_category.value if result.final_category else None,
-        "tokens": trace.total_tokens,
-        "latency_ms": round(trace.total_latency_ms, 1),
-    })
+    _emit(done_event(
+        result.published,
+        rounds=result.rounds_to_valid,
+        path=str(result.published_path) if result.published_path else None,
+        category=result.final_category.value if result.final_category else None,
+    ))
     return result
 
 

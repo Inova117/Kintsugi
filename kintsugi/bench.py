@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from .engine import run
-from .models import AnthropicModel, MockModel
+from .models import MockModel, select_real_model
 
 # Release thresholds (tune per product risk tolerance).
 THRESHOLD_POST_REPAIR_VALID = 0.90
@@ -102,7 +102,7 @@ def run_bench(
 ) -> BenchResult:
     cases_in = load_golden(golden_path)
     outcomes: List[CaseOutcome] = []
-    shared_real = AnthropicModel() if not mock else None
+    shared_real = select_real_model() if not mock else None
 
     for case in cases_in:
         prompt = case["prompt"]

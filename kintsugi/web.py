@@ -8,7 +8,6 @@ clicks with no flaky live timing.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -17,7 +16,7 @@ from pydantic import BaseModel
 
 from .bench import run_bench
 from .engine import run
-from .models import AnthropicModel, MockModel
+from .models import MockModel, has_real_provider, select_real_model
 
 STATIC = Path(__file__).parent / "static"
 app = FastAPI(title="Kintsugi")
@@ -36,8 +35,8 @@ def index() -> FileResponse:
 
 @app.post("/api/generate")
 def api_generate(body: GenerateBody) -> JSONResponse:
-    if body.real and os.environ.get("ANTHROPIC_API_KEY"):
-        model = AnthropicModel()
+    if body.real and has_real_provider():
+        model = select_real_model()
     else:
         # Guarantee the scripted dead-end for the canonical demo prompt.
         bugs = body.bugs

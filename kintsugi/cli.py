@@ -13,7 +13,7 @@ from pathlib import Path
 
 from .bench import run_bench
 from .engine import run
-from .models import AnthropicModel, MockModel
+from .models import MockModel, has_real_provider, select_real_model
 
 try:
     from rich.console import Console
@@ -63,15 +63,15 @@ def _print_ladder(ev: dict) -> None:
 def _cmd_run(args) -> int:
     _load_dotenv()
     mock = not args.real
-    if not mock and not os.environ.get("ANTHROPIC_API_KEY"):
-        out("[red]--real needs ANTHROPIC_API_KEY (copy .env.example -> .env).[/red]")
+    if not mock and not has_real_provider():
+        out("[red]--real needs GROQ_API_KEY or ANTHROPIC_API_KEY (copy .env.example -> .env).[/red]")
         return 2
     if mock:
         bugs = args.bugs.split(",") if args.bugs else None
         model = MockModel(bugs=bugs)
     else:
-        model = AnthropicModel()
-    out(f"[bold cyan]Kintsugi[/bold cyan]  ·  {'mock' if mock else 'anthropic'} model  ·  "
+        model = select_real_model()
+    out(f"[bold cyan]Kintsugi[/bold cyan]  ·  {model.name} model  ·  "
         f"prompt: [italic]{args.prompt}[/italic]")
 
     def emit(ev):
@@ -86,13 +86,13 @@ def _cmd_run(args) -> int:
         elif ev["type"] == "done":
             out("")
             if ev["published"]:
-                verb = "healed and published" if ev["rounds"] else "published clean"
-                rounds = f" in {ev['rounds']} repair round(s)" if ev["rounds"] else ""
-                out(f"✅ [bold green]{verb}[/bold green]{rounds}  →  {ev['path']}")
+                verb = "healed and published" if ev.get("rounds") else "published clean"
+                rounds = f" in {ev['rounds']} repair round(s)" if ev.get("rounds") else ""
+                out(f"✅ [bold green]{verb}[/bold green]{rounds}  →  {ev.get('path')}")
             else:
-                out(f"⛔ [bold red]did not converge[/bold red] ({ev['category']}) — "
+                out(f"⛔ [bold red]did not converge[/bold red] ({ev.get('category')}) — "
                     f"nothing published (last valid guarantee held)")
-            out(f"   [dim]{ev['tokens']} tokens · {ev['latency_ms']:.0f} ms wall[/dim]")
+            out(f"   [dim]{ev.get('tokens', 0)} tokens · {ev.get('latency_ms', 0):.0f} ms wall[/dim]")
 
     res = run(
         args.prompt, model,
@@ -109,7 +109,10 @@ def _cmd_run(args) -> int:
 def _cmd_bench(args) -> int:
     _load_dotenv()
     mock = not args.real
-    out(f"[bold cyan]Kintsugi release gate[/bold cyan]  ·  {'mock' if mock else 'anthropic'} model")
+    if not mock and not has_real_provider():
+        out("[red]--real needs GROQ_API_KEY or ANTHROPIC_API_KEY (copy .env.example -> .env).[/red]")
+        return 2
+    out(f"[bold cyan]Kintsugi release gate[/bold cyan]  ·  {'mock' if mock else 'real'} model")
     res = run_bench(
         Path(args.golden),
         mock=mock,

@@ -165,55 +165,67 @@ def _opt_label(qi: int, ai: int) -> str:
 
 
 # --------------------------------------------------------------------------------------
-# Real model
+# Real models
 # --------------------------------------------------------------------------------------
+#
+# Both providers share one base (_ChatModel). A provider only implements `_call` (how it
+# talks to its API) + names its four routed models. The plan->generate->repair->judge
+# prompting logic is identical, so routing/repair behaviour is provider-agnostic.
 
 _JAM_HTML_CONTRACT = """\
-Emit ONE self-contained HTML document (no external requests) implementing this quiz.
-Rules the validator enforces:
-  - root element has data-testid="jam-root"
-  - each option is a <button> with data-testid="option-<questionId>-<optionId>" and data-outcome="<outcome>"
-  - the final screen has data-testid="result-screen" containing data-testid="result-title" (non-empty)
-  - EVERY outcome that any option can score toward MUST have a reachable, non-empty result screen
-Return only the HTML, no prose, no markdown fences.
+Emit ONE self-contained HTML document (no external requests, no CDN) implementing this quiz.
+The automated validator enforces ALL of these — a Jam that misses any is rejected:
+  - a root element with data-testid="jam-root"
+  - each answer is a <button> with data-testid="option-<questionId>-<optionId>" AND data-outcome="<outcome>"
+  - after the last question, a screen with data-testid="result-screen" containing
+    data-testid="result-title" whose text is NON-EMPTY
+  - EVERY outcome any option can score toward MUST have a reachable, non-empty result screen
+    (a missing branch = a dead-end = rejected)
+Score by counting chosen outcomes; the most-chosen outcome picks the result screen.
+Return ONLY the raw HTML — no prose, no markdown fences.
+
+Skeleton to follow (fill in from the spec):
+<!doctype html><html><body>
+<main data-testid="jam-root"></main>
+<script>
+const SPEC = /* the spec as JSON */;
+/* render questions; each option button has data-testid="option-<qid>-<oid>" + data-outcome;
+   on the final answer, compute the winning outcome, find its persona, and render
+   <section data-testid="result-screen"><h1 data-testid="result-title">...</h1></section>;
+   GUARD the persona lookup so a missing one never throws and never renders blank. */
+</script></body></html>
 """
 
+_PLAN_SYSTEM = (
+    "You design personality-quiz specs. Respond with JSON only, matching: "
+    '{"title": str, "theme": str, "questions":[{"id":str,"prompt":str,'
+    '"options":[{"id":str,"label":str,"outcome":str}]}], '
+    '"personas":[{"outcome":str,"title":str,"description":str}]}. '
+    "Use >=3 questions, >=2 options each, and EVERY outcome referenced by an option MUST "
+    "have a matching persona (else a player dead-ends). Keep ids short like q0/o00."
+)
 
-class AnthropicModel:
-    """Real model with cheap-draft / strong-repair routing."""
+_JUDGE_SYSTEM = (
+    "Rate this quiz. Respond with JSON only: "
+    '{"coherence": number 0..1, "safe": true/false, "notes": string}. '
+    "coherence = do the questions and results hang together and feel fun; safe = SFW. "
+    "You are ADVISORY only — you do not decide pass/fail."
+)
 
-    name = "anthropic"
 
-    def __init__(self) -> None:
-        import anthropic  # imported lazily so mock mode needs no dependency
+class _ChatModel:
+    """Shared plan/generate/repair/judge logic. Subclasses provide `_call` + model names."""
 
-        self._client = anthropic.Anthropic()
-        self._plan_model = os.environ.get("KINTSUGI_PLAN_MODEL", "claude-haiku-4-5-20251001")
-        self._draft_model = os.environ.get("KINTSUGI_DRAFT_MODEL", "claude-haiku-4-5-20251001")
-        self._repair_model = os.environ.get("KINTSUGI_REPAIR_MODEL", "claude-sonnet-5")
-        self._judge_model = os.environ.get("KINTSUGI_JUDGE_MODEL", "claude-haiku-4-5-20251001")
+    name = "chat"
+    _plan_model = _draft_model = _repair_model = _judge_model = ""
 
-    def _call(self, model: str, system: str, user: str, span, max_tokens: int = 4096) -> str:
-        resp = self._client.messages.create(
-            model=model,
-            max_tokens=max_tokens,
-            system=system,
-            messages=[{"role": "user", "content": user}],
-        )
-        span.model = model
-        span.tokens_in = resp.usage.input_tokens
-        span.tokens_out = resp.usage.output_tokens
-        return "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
+    def _call(self, model: str, system: str, user: str, span, max_tokens: int = 4096,
+              json_mode: bool = False) -> str:
+        raise NotImplementedError
 
     def plan(self, prompt: str, trace: Trace) -> JamSpec:
-        system = (
-            "You design personality-quiz specs. Output ONLY JSON matching: "
-            '{title, theme, questions:[{id, prompt, options:[{id,label,outcome}]}], '
-            "personas:[{outcome,title,description}]}. >=3 questions, >=2 options each, "
-            "and every outcome referenced by an option MUST have a persona."
-        )
         with trace.span("plan", "plan", prompt=prompt) as s:
-            raw = self._call(self._plan_model, system, prompt, s, max_tokens=2048)
+            raw = self._call(self._plan_model, _PLAN_SYSTEM, prompt, s, max_tokens=2048, json_mode=True)
             spec = JamSpec.model_validate(_extract_json(raw))  # raises -> engine repairs the spec
             s.attributes["outcomes"] = sorted(spec.outcomes_with_screens)
         return spec
@@ -225,9 +237,9 @@ class AnthropicModel:
             return _extract_html(self._call(self._draft_model, system, user, s))
 
     def repair(self, html: str, spec: JamSpec, report: "ValidationReport", trace: Trace, attempt: int) -> str:
-        system = "You repair a broken quiz. Change the minimum needed. " + _JAM_HTML_CONTRACT
+        system = "You repair a broken quiz. Change the minimum needed to pass. " + _JAM_HTML_CONTRACT
         user = (
-            f"The quiz failed validation.\nFAILURES:\n{report.summary()}\n\n"
+            f"The quiz failed validation.\nFAILURE:\n{report.summary()}\n\n"
             f"SPEC:\n{spec.model_dump_json()}\n\nCURRENT HTML:\n{html}\n\n"
             "Return the corrected full HTML."
         )
@@ -236,18 +248,72 @@ class AnthropicModel:
             return _extract_html(self._call(model, system, user, s, max_tokens=4096))
 
     def judge(self, html: str, spec: JamSpec, trace: Trace) -> JudgeVerdict:
-        system = (
-            "Rate this quiz. Output ONLY JSON {coherence: 0..1, safe: bool, notes: string}. "
-            "coherence = do questions/results hang together; safe = SFW. You are ADVISORY only."
-        )
         with trace.span("judge", "judge") as s:
-            raw = self._call(self._judge_model, system, "SPEC:\n" + spec.model_dump_json(), s, max_tokens=512)
-            data = _extract_json(raw)
+            raw = self._call(self._judge_model, _JUDGE_SYSTEM, "SPEC:\n" + spec.model_dump_json(),
+                             s, max_tokens=512, json_mode=True)
+            try:
+                data = _extract_json(raw)
+            except ValueError:
+                data = {}
         return JudgeVerdict(
             coherence=float(data.get("coherence", 0.0)),
             safe=bool(data.get("safe", True)),
             notes=str(data.get("notes", "")),
         )
+
+
+class AnthropicModel(_ChatModel):
+    """Anthropic provider: cheap Haiku draft/plan, strong Sonnet repair."""
+
+    name = "anthropic"
+
+    def __init__(self) -> None:
+        import anthropic  # lazy so mock/groq modes need no dependency
+
+        self._client = anthropic.Anthropic()
+        self._plan_model = os.environ.get("KINTSUGI_PLAN_MODEL", "claude-haiku-4-5-20251001")
+        self._draft_model = os.environ.get("KINTSUGI_DRAFT_MODEL", "claude-haiku-4-5-20251001")
+        self._repair_model = os.environ.get("KINTSUGI_REPAIR_MODEL", "claude-sonnet-5")
+        self._judge_model = os.environ.get("KINTSUGI_JUDGE_MODEL", "claude-haiku-4-5-20251001")
+
+    def _call(self, model, system, user, span, max_tokens=4096, json_mode=False) -> str:
+        resp = self._client.messages.create(
+            model=model, max_tokens=max_tokens, system=system,
+            messages=[{"role": "user", "content": user}],
+        )
+        span.model = model
+        span.tokens_in = resp.usage.input_tokens
+        span.tokens_out = resp.usage.output_tokens
+        return "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
+
+
+class GroqModel(_ChatModel):
+    """Groq provider (free, OpenAI-compatible): fast small draft/plan, 70B repair."""
+
+    name = "groq"
+
+    def __init__(self) -> None:
+        from groq import Groq  # lazy
+
+        self._client = Groq()  # reads GROQ_API_KEY from env
+        self._plan_model = os.environ.get("KINTSUGI_GROQ_PLAN_MODEL", "llama-3.1-8b-instant")
+        self._draft_model = os.environ.get("KINTSUGI_GROQ_DRAFT_MODEL", "llama-3.3-70b-versatile")
+        self._repair_model = os.environ.get("KINTSUGI_GROQ_REPAIR_MODEL", "llama-3.3-70b-versatile")
+        self._judge_model = os.environ.get("KINTSUGI_GROQ_JUDGE_MODEL", "llama-3.1-8b-instant")
+
+    def _call(self, model, system, user, span, max_tokens=4096, json_mode=False) -> str:
+        kwargs = dict(
+            model=model, max_tokens=max_tokens, temperature=0.4,
+            messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+        )
+        if json_mode:
+            kwargs["response_format"] = {"type": "json_object"}
+        resp = self._client.chat.completions.create(**kwargs)
+        span.model = model
+        usage = getattr(resp, "usage", None)
+        span.tokens_in = getattr(usage, "prompt_tokens", 0) or 0
+        span.tokens_out = getattr(usage, "completion_tokens", 0) or 0
+        return resp.choices[0].message.content or ""
 
 
 def _extract_json(text: str) -> dict:
@@ -267,5 +333,18 @@ def _extract_html(text: str) -> str:
     return text
 
 
+def has_real_provider() -> bool:
+    return bool(os.environ.get("GROQ_API_KEY") or os.environ.get("ANTHROPIC_API_KEY"))
+
+
+def select_real_model() -> Model:
+    """Pick the real provider from whichever API key is present (Groq wins if both)."""
+    if os.environ.get("GROQ_API_KEY"):
+        return GroqModel()
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        return AnthropicModel()
+    raise RuntimeError("no real provider: set GROQ_API_KEY or ANTHROPIC_API_KEY (see .env.example)")
+
+
 def build_model(mock: bool) -> Model:
-    return MockModel() if mock else AnthropicModel()
+    return MockModel() if mock else select_real_model()

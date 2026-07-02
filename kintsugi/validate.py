@@ -178,12 +178,17 @@ def _browser_validate(html: str, spec: JamSpec):
             for persona in spec.personas:
                 page, errors = fresh_page()
                 path = maximizing_path(spec, persona.outcome)
+                current_sel = ""
                 try:
                     for q, oid in zip(spec.questions, path):
-                        page.click(f'[data-testid="option-{q.id}-{oid}"]', timeout=1500)
-                except Exception as e:  # a path we can't complete is itself a dead-end
+                        current_sel = f'[data-testid="option-{q.id}-{oid}"]'
+                        page.click(current_sel, timeout=1500)
+                except Exception:  # a path we can't complete is itself a dead-end
+                    # Name the exact missing button so the repair model can fix the testid.
                     tiers.append(TierResult("PLAYTHROUGH", False, FailureCategory.DEAD_END,
-                                            f"outcome '{persona.outcome}': path unplayable ({type(e).__name__})"))
+                                            f"outcome '{persona.outcome}': answer button {current_sel} was "
+                                            f"never clickable — its data-testid/option id must match the spec, "
+                                            f"and every option must render"))
                     return tiers, []
                 page.wait_for_timeout(20)
                 if errors:

@@ -32,7 +32,7 @@ puts the reliability + eval half of that on stage, and has an honest answer for 
 | Own the **agent harness layer** | [`engine.py`](kintsugi/engine.py) — the plan→generate→validate→repair→publish state machine |
 | **Long-horizon agentic workflow, max autonomy** | the bounded repair loop with reflection + model escalation |
 | **Eval + quality loops, regression, failure taxonomy** | [`validate.py`](kintsugi/validate.py), [`taxonomy.py`](kintsugi/taxonomy.py), [`bench.py`](kintsugi/bench.py) |
-| **Model strategy: routing, cost/latency** | Haiku-draft → Sonnet-repair routing in [`models.py`](kintsugi/models.py); tokens/latency per span |
+| **Model strategy: routing, cost/latency** | cheap-draft → strong-repair routing in [`models.py`](kintsugi/models.py) (Groq 8B→70B or Anthropic Haiku→Sonnet); tokens/latency per span |
 | **Debuggable systems: tracing, observability** | [`trace.py`](kintsugi/trace.py) — OTel-GenAI-shaped spans → `runs/<id>/trace.json` |
 | **Research-and-ship** | the benchmark *is* the experiment harness; thresholds gate production |
 | Bonus: *"built a code-generation pipeline — this is what we do"* | that's literally what this is |
@@ -72,7 +72,37 @@ kintsugi bench --degrade  # simulate a weaker model -> BLOCK
 No browser installed? Everything still runs via a static-analysis fallback
 (`kintsugi run ... --no-browser`); it approximates the same findings and says so.
 
-Go real: `cp .env.example .env`, add `ANTHROPIC_API_KEY`, then add `--real` to any command.
+### Run it for real with a free Groq key
+
+By default everything uses a built-in **mock** model — no key, no cost, fully offline. To
+generate with a real LLM, Kintsugi supports **Groq (free)** and Anthropic. Groq is the easy
+path. Three steps:
+
+1. **Get a free key** at <https://console.groq.com/keys> (it looks like `gsk_...`).
+2. **Put it in a `.env` file.** From the project folder:
+   ```bash
+   cp .env.example .env
+   ```
+   Open `.env`, and set just this one line (leave everything else as-is):
+   ```
+   GROQ_API_KEY=gsk_your_key_here
+   ```
+3. **Add `--real`** to any command:
+   ```bash
+   kintsugi run "What kind of cursed houseplant are you?" --real
+   ```
+   In the web UI (`kintsugi serve`), tick the **"use real model (Groq)"** box before Generate.
+
+That's the whole thing. `.env` is gitignored, so **your key is never committed**. If you see
+`--real needs GROQ_API_KEY`, the key just isn't in `.env` yet.
+
+> **Want to watch the repair loop with a real model?** The strong default model usually gets
+> it right on the first try. To force more (real) mistakes for it to heal, set
+> `KINTSUGI_GROQ_DRAFT_MODEL=llama-3.1-8b-instant` in `.env` — the weaker model slips up and
+> the 70B repair model fixes it.
+
+> **Security:** never paste a real key anywhere public, and rotate it if you do. The key lives
+> only in `.env` on your machine.
 
 ---
 
@@ -185,7 +215,7 @@ pytest            # 15 tests; the browser test auto-skips if chromium isn't inst
 
 | Real today | Mocked for the offline scaffold |
 |---|---|
-| The full loop, ladder, taxonomy, routing logic, tracing, gate | Model calls (deterministic `MockModel`) — swap with `--real` + `ANTHROPIC_API_KEY` |
+| The full loop, ladder, taxonomy, routing logic, tracing, gate | Model calls (deterministic `MockModel`) — swap with `--real` + a free `GROQ_API_KEY` (or `ANTHROPIC_API_KEY`) |
 | Browser execution feedback (Playwright/chromium) | — |
 | Repair-lift chart + SHIP/BLOCK | The mock's failure *sequences* are pinned per golden case for a reproducible curve |
 

@@ -1,8 +1,6 @@
 """End-to-end loop behavior on the offline mock: heal, converge-clean, and the
 non-convergence / last-valid guarantee."""
 
-from pathlib import Path
-
 from kintsugi.engine import run
 from kintsugi.models import MockModel
 from kintsugi.taxonomy import FailureCategory
@@ -46,6 +44,35 @@ def test_non_convergence_publishes_nothing(tmp_path):
     assert not res.published
     assert res.final_category == FailureCategory.NON_CONVERGENCE
     assert not (tmp_path / "test" / "jam.html").exists()
+
+
+class _AlwaysFailPlan:
+    """A model whose plan never satisfies the contract — exercises the plan-failure path."""
+    name = "badplan"
+
+    def plan(self, prompt, trace):
+        raise ValueError("dead-end: outcome 'x' has no result screen")
+
+    def generate(self, *a, **k):
+        raise AssertionError("must not reach generate when planning fails")
+
+    def repair(self, *a, **k):
+        raise AssertionError("must not repair when planning fails")
+
+    def judge(self, *a, **k):
+        raise AssertionError("must not judge when planning fails")
+
+
+def test_plan_failure_is_graceful(tmp_path):
+    events = []
+    res = run("bad prompt", _AlwaysFailPlan(), out_dir=tmp_path, run_id="t",
+              prefer_browser=False, run_judge=False, emit=events.append)
+    assert not res.published
+    assert res.final_category == FailureCategory.SCHEMA_CONTRACT
+    # Regression: the plan-failure "done" event must carry tokens/latency (a missing key
+    # here previously crashed the CLI printer with a KeyError).
+    done = [e for e in events if e["type"] == "done"]
+    assert done and "tokens" in done[0] and "latency_ms" in done[0]
 
 
 def test_trace_records_routing(tmp_path):

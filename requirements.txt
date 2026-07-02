@@ -1,7 +1,9 @@
 # Core runtime
 pydantic>=2.5
 
-# Model provider (real mode). Mock mode needs none of these.
+# Model providers (real mode). Mock mode needs none of these.
+# Groq is free + OpenAI-compatible; Anthropic optional. Pick whichever key you have.
+groq>=0.11
 anthropic>=0.40
 
 # Validation ladder (real execution feedback). Falls back to static checks if the

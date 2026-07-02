@@ -56,6 +56,9 @@
       <input id="prompt" type="text" value="the cursed quiz — which chaos gremlin are you?">
       <button id="gen" onclick="generate()">Generate</button>
     </div>
+    <label class="tag" style="display:block; margin:-8px 0 12px;">
+      <input type="checkbox" id="real"> use real model (Groq) — needs a key in .env; otherwise uses the mock
+    </label>
     <div class="tag" id="stage">the generated Jam renders here</div>
     <iframe id="stageframe" sandbox="allow-scripts" title="Jam preview"></iframe>
 
@@ -89,9 +92,10 @@ async function generate() {
   document.getElementById('banner').innerHTML = '';
   document.getElementById('repairnote').textContent = '';
   try {
+    const real = document.getElementById('real').checked;
     const r = await fetch('/api/generate', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({prompt})
+      body: JSON.stringify({prompt, real})
     });
     RUN = await r.json();
     CURSOR = 0;
