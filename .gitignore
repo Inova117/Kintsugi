@@ -11,3 +11,6 @@ runs/
 
 # Secrets
 .env
+
+# Harness state
+.claude/*.lock
