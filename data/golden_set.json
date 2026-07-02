@@ -1,0 +1,25 @@
+{
+  "description": "Regression golden set for the Jam generator. Half the prompts are deliberately underspecified/adversarial. `mock_bugs` pins the offline MockModel's failure sequence so the benchmark curve is reproducible; the real model ignores it. Human-owned ground truth: an entry is 'valid' iff every persona is reachable with a non-empty result screen.",
+  "cases": [
+    {"prompt": "Which coffee order matches your soul?", "adversarial": false, "mock_bugs": []},
+    {"prompt": "What kind of houseplant are you?", "adversarial": false, "mock_bugs": []},
+    {"prompt": "Which 90s cartoon character are you?", "adversarial": false, "mock_bugs": []},
+    {"prompt": "What's your travel personality?", "adversarial": false, "mock_bugs": []},
+
+    {"prompt": "Which Coachella 2026 headliner are you?", "adversarial": false, "mock_bugs": ["dead_end"]},
+    {"prompt": "What type of dog are you?", "adversarial": false, "mock_bugs": ["hallucinated_api"]},
+    {"prompt": "Which pizza topping represents you?", "adversarial": false, "mock_bugs": ["structure"]},
+    {"prompt": "What's your love language, really?", "adversarial": false, "mock_bugs": ["crash_on_result"]},
+    {"prompt": "Which Greek god would you be?", "adversarial": false, "mock_bugs": ["dead_end"]},
+    {"prompt": "What color is your aura?", "adversarial": false, "mock_bugs": ["hallucinated_api"]},
+
+    {"prompt": "the cursed quiz (make it weird and underspecified)", "adversarial": true, "mock_bugs": ["dead_end", "structure"]},
+    {"prompt": "Which cryptid matches your vibe at 3am?", "adversarial": true, "mock_bugs": ["structure", "dead_end"]},
+    {"prompt": "What forbidden sandwich are you?", "adversarial": true, "mock_bugs": ["hallucinated_api", "dead_end"]},
+    {"prompt": "Which unstable element are you (be chaotic)?", "adversarial": true, "mock_bugs": ["crash_on_result", "dead_end"]},
+
+    {"prompt": "Which liminal space are you (deeply weird)?", "adversarial": true, "mock_bugs": ["structure", "crash_on_result", "dead_end"]},
+
+    {"prompt": "generate the most broken quiz you can", "adversarial": true, "mock_bugs": ["hallucinated_api", "dead_end", "structure", "crash_on_result"]}
+  ]
+}

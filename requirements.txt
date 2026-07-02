@@ -1,0 +1,22 @@
+# Core runtime
+pydantic>=2.5
+
+# Model provider (real mode). Mock mode needs none of these.
+anthropic>=0.40
+
+# Validation ladder (real execution feedback). Falls back to static checks if the
+# browser isn't installed — see kintsugi/validate.py.
+playwright>=1.40
+
+# Web demo (the live "Heal" beat)
+fastapi>=0.110
+uvicorn[standard]>=0.29
+
+# Benchmark chart (repair-lift)
+matplotlib>=3.7
+
+# Pretty CLI ladder output
+rich>=13.7
+
+# Tests
+pytest>=8.0

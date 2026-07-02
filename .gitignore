@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Run artifacts (traces, published jams, benchmark output)
+runs/
+!runs/.gitkeep
+
+# Secrets
+.env

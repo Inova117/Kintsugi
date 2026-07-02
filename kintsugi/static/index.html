@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kintsugi — self-healing Jam runtime</title>
+<style>
+  :root { --bg:#0b1020; --panel:#121933; --line:#26304f; --fg:#e8edff; --dim:#8b95bd;
+          --accent:#6366f1; --green:#22c55e; --red:#f43f5e; --amber:#f59e0b; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:ui-sans-serif,system-ui,sans-serif; background:var(--bg); color:var(--fg); }
+  header { padding:16px 24px; border-bottom:1px solid var(--line); display:flex; gap:14px; align-items:baseline; }
+  header b { font-size:18px; } header span { color:var(--dim); font-size:13px; }
+  .wrap { display:grid; grid-template-columns:1fr 1fr; gap:0; height:calc(100vh - 61px); }
+  .col { padding:20px 24px; overflow:auto; }
+  .col.left { border-right:1px solid var(--line); }
+  .promptbar { display:flex; gap:8px; margin-bottom:16px; }
+  input[type=text] { flex:1; padding:12px 14px; border-radius:10px; border:1px solid var(--line);
+          background:var(--panel); color:var(--fg); font-size:14px; }
+  button { padding:12px 16px; border-radius:10px; border:1px solid var(--line); background:var(--accent);
+          color:white; font-weight:600; cursor:pointer; font-size:14px; }
+  button.ghost { background:var(--panel); }
+  button:disabled { opacity:.4; cursor:not-allowed; }
+  iframe { width:100%; height:520px; border:1px solid var(--line); border-radius:14px; background:#0f172a; }
+  .ladder { border:1px solid var(--line); border-radius:14px; background:var(--panel); padding:16px; }
+  .tier { display:flex; gap:10px; align-items:flex-start; padding:9px 0; border-bottom:1px dashed var(--line); }
+  .tier:last-child { border-bottom:0; }
+  .glyph { width:20px; font-weight:800; }
+  .tname { width:118px; font-weight:600; }
+  .tdetail { color:var(--dim); font-size:13px; flex:1; }
+  .cat { color:var(--amber); font-weight:700; font-size:12px; }
+  .pass .glyph { color:var(--green); } .fail .glyph { color:var(--red); }
+  .adv { opacity:.6; } .skip { opacity:.35; }
+  .banner { margin-top:14px; padding:12px 14px; border-radius:10px; font-weight:600; }
+  .banner.ok { background:rgba(34,197,94,.12); color:#86efac; border:1px solid rgba(34,197,94,.3); }
+  .banner.bad { background:rgba(244,63,94,.12); color:#fda4af; border:1px solid rgba(244,63,94,.3); }
+  .meta { color:var(--dim); font-size:12px; margin-top:10px; }
+  .heal { background:var(--green); }
+  .tag { font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:.08em; }
+  .benchrow { display:flex; gap:10px; align-items:center; margin:16px 0 10px; }
+  #benchimg { width:100%; border:1px solid var(--line); border-radius:12px; background:#fff; display:none; }
+  .verdict { font-weight:800; padding:4px 10px; border-radius:8px; }
+  .verdict.SHIP { background:rgba(34,197,94,.15); color:#86efac; }
+  .verdict.BLOCK { background:rgba(244,63,94,.15); color:#fda4af; }
+</style>
+</head>
+<body>
+<header>
+  <b>Kintsugi</b>
+  <span>self-healing Jam-generation runtime · prompt → plan → generate → run/validate → repair → publish</span>
+</header>
+
+<div class="wrap">
+  <div class="col left">
+    <div class="promptbar">
+      <input id="prompt" type="text" value="the cursed quiz — which chaos gremlin are you?">
+      <button id="gen" onclick="generate()">Generate</button>
+    </div>
+    <div class="tag" id="stage">the generated Jam renders here</div>
+    <iframe id="stageframe" sandbox="allow-scripts" title="Jam preview"></iframe>
+
+    <div class="benchrow">
+      <button class="ghost" onclick="runBench(false)">▶ Run release gate</button>
+      <button class="ghost" onclick="runBench(true)">⚠ Simulate weaker model</button>
+      <span id="verdict"></span>
+    </div>
+    <img id="benchimg" alt="repair-lift benchmark">
+  </div>
+
+  <div class="col right">
+    <div class="tag">validation ladder</div>
+    <div class="ladder" id="ladder"><div class="tdetail">Generate a Jam to see the ladder.</div></div>
+    <div style="margin-top:14px; display:flex; gap:8px;">
+      <button class="heal" id="heal" onclick="heal()" disabled>🔧 Heal</button>
+      <span class="meta" id="repairnote"></span>
+    </div>
+    <div id="banner"></div>
+    <div class="meta" id="meta"></div>
+  </div>
+</div>
+
+<script>
+let RUN = null;      // last /api/generate response
+let CURSOR = 0;      // which attempt is on screen
+
+async function generate() {
+  const prompt = document.getElementById('prompt').value;
+  setBusy(true);
+  document.getElementById('banner').innerHTML = '';
+  document.getElementById('repairnote').textContent = '';
+  try {
+    const r = await fetch('/api/generate', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({prompt})
+    });
+    RUN = await r.json();
+    CURSOR = 0;
+    showAttempt();
+  } catch (e) {
+    document.getElementById('banner').innerHTML = '<div class="banner bad">request failed: '+e+'</div>';
+  } finally { setBusy(false); }
+}
+
+function showAttempt() {
+  const a = RUN.attempts[CURSOR];
+  document.getElementById('stageframe').srcdoc = a.html;
+  document.getElementById('stage').textContent =
+    (CURSOR === 0 ? 'first draft' : 'repair round ' + CURSOR) + ' · ' + RUN.title;
+  renderLadder(a);
+  const more = CURSOR < RUN.attempts.length - 1;
+  document.getElementById('heal').disabled = !(!a.passed && more);
+  document.getElementById('repairnote').textContent =
+    (!a.passed && more) ? 'click Heal — the agent will patch and re-validate' : '';
+  updateBanner(a, more);
+}
+
+function heal() {
+  const prev = RUN.attempts[CURSOR];
+  document.getElementById('repairnote').textContent = '🔧 repairing: ' + prev.summary + ' …';
+  setTimeout(() => { CURSOR++; showAttempt(); }, 550);  // small beat so the fix reads as an action
+}
+
+function renderLadder(a) {
+  const order = ['STRUCTURE','RENDER','PLAYTHROUGH','JUDGE'];
+  let html = '<div class="tag" style="margin-bottom:8px;">engine: '+a.engine+'</div>';
+  for (const t of a.tiers) {
+    const cls = t.advisory ? 'adv' : (t.passed ? 'pass' : 'fail');
+    const glyph = t.passed ? '✓' : '✗';
+    const cat = t.category ? '<span class="cat">'+t.category+'</span> ' : '';
+    html += '<div class="tier '+cls+'"><div class="glyph">'+glyph+'</div>'+
+            '<div class="tname">'+t.tier+(t.advisory?' <span class="tag">adv</span>':'')+'</div>'+
+            '<div class="tdetail">'+cat+t.detail+'</div></div>';
+  }
+  for (const s of a.not_reached) {
+    html += '<div class="tier skip"><div class="glyph">·</div><div class="tname">'+s+'</div>'+
+            '<div class="tdetail">not reached</div></div>';
+  }
+  document.getElementById('ladder').innerHTML = html;
+}
+
+function updateBanner(a, more) {
+  const b = document.getElementById('banner');
+  const m = document.getElementById('meta');
+  if (a.passed) {
+    const rounds = RUN.rounds_to_valid;
+    b.innerHTML = '<div class="banner ok">✅ '+(rounds ? 'Healed in '+rounds+' repair round(s)' : 'Valid on first try')+
+                  ' — every persona reachable, published.</div>';
+  } else if (!more) {
+    b.innerHTML = '<div class="banner bad">⛔ Did not converge ('+RUN.category+') — nothing published '+
+                  '(last-valid guarantee held).</div>';
+  } else {
+    b.innerHTML = '<div class="banner bad">✗ '+a.summary+'</div>';
+  }
+  m.textContent = RUN.tokens + ' tokens · ' + RUN.latency_ms.toFixed(0) + ' ms wall';
+}
+
+async function runBench(degrade) {
+  document.getElementById('verdict').innerHTML = '<span class="meta">running gate…</span>';
+  const r = await fetch('/api/bench', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({degrade: !!degrade})
+  });
+  const j = await r.json();
+  document.getElementById('verdict').innerHTML =
+    '<span class="verdict '+j.verdict+'">'+j.verdict+'</span> ' +
+    '<span class="meta">post-repair valid '+(j.valid_curve[String(j.max_repairs)]*100).toFixed(0)+
+    '% · non-conv '+(j.non_convergence_rate*100).toFixed(0)+'%</span>';
+  const img = document.getElementById('benchimg');
+  img.src = '/bench.png?t=' + Date.now();
+  img.style.display = 'block';
+}
+
+function setBusy(b) {
+  document.getElementById('gen').disabled = b;
+  document.getElementById('gen').textContent = b ? 'Generating…' : 'Generate';
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kintsugi"
+version = "0.1.0"
+description = "A self-healing Jam-generation runtime: prompt -> plan -> generate -> run/validate -> repair -> publish, with a measured eval loop."
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.5",
+]
+
+[project.optional-dependencies]
+# Everything needed for the full live demo + benchmark.
+full = [
+    "anthropic>=0.40",
+    "playwright>=1.40",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "matplotlib>=3.7",
+    "rich>=13.7",
+]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+kintsugi = "kintsugi.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["kintsugi*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
