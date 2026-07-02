@@ -33,6 +33,7 @@ class FailureCategory(str, Enum):
 
     # --- loop-level ---
     NON_CONVERGENCE = "NON_CONVERGENCE"      # ran out of repair budget still failing
+    PROVIDER_ERROR = "PROVIDER_ERROR"        # model/API failed (rate limit, network) — infra, not content
 
     @property
     def stage(self) -> str:
@@ -46,4 +47,5 @@ class FailureCategory(str, Enum):
             FailureCategory.SAFETY: "quality",
             FailureCategory.INCOHERENT: "quality",
             FailureCategory.NON_CONVERGENCE: "loop",
+            FailureCategory.PROVIDER_ERROR: "infra",
         }[self]

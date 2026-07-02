@@ -8,10 +8,12 @@ clicks with no flaky live timing.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .bench import run_bench
@@ -20,6 +22,7 @@ from .models import MockModel, has_real_provider, select_real_model
 
 STATIC = Path(__file__).parent / "static"
 app = FastAPI(title="Kintsugi")
+app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
 
 
 class GenerateBody(BaseModel):
@@ -96,3 +99,14 @@ def bench_png() -> FileResponse:
     if not p.exists():
         run_bench(Path("data/golden_set.json"), mock=True)
     return FileResponse(p)
+
+
+@app.get("/api/gate")
+def api_gate() -> JSONResponse:
+    """Real Groq release-gate results, if the real benchmark has been run."""
+    p = Path("runs/bench_real/bench.json")
+    if p.exists():
+        data = json.loads(p.read_text())
+        data["available"] = True
+        return JSONResponse(data)
+    return JSONResponse({"available": False})

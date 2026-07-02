@@ -1,0 +1,13 @@
+{
+  "description": "Real consumer-style quiz prompts for the LIVE Groq release gate. No mock_bugs — the real model decides. Ground truth: a Jam is valid iff every persona is reachable with a non-empty result screen (verified by driving it in a real browser).",
+  "cases": [
+    {"prompt": "What kind of coffee drink are you?"},
+    {"prompt": "Which mythical creature matches your personality?"},
+    {"prompt": "What type of houseplant are you?"},
+    {"prompt": "Which 80s movie hero are you?"},
+    {"prompt": "What pizza topping represents your soul?"},
+    {"prompt": "Which season are you, really?"},
+    {"prompt": "What kind of dog would you be?"},
+    {"prompt": "Which video game genre is your life?"}
+  ]
+}

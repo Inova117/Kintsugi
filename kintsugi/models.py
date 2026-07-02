@@ -17,6 +17,7 @@ import hashlib
 import json
 import os
 import re
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, List, Optional, Protocol
 
@@ -308,12 +309,26 @@ class GroqModel(_ChatModel):
         )
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
-        resp = self._client.chat.completions.create(**kwargs)
+        resp = self._retrying_create(**kwargs)
         span.model = model
         usage = getattr(resp, "usage", None)
         span.tokens_in = getattr(usage, "prompt_tokens", 0) or 0
         span.tokens_out = getattr(usage, "completion_tokens", 0) or 0
         return resp.choices[0].message.content or ""
+
+    def _retrying_create(self, **kwargs):
+        """Retry rate-limit / transient errors with exponential backoff (free tier throttles)."""
+        transient = ("RateLimit", "Timeout", "Connection", "InternalServer", "APIStatus", "ServiceUnavailable")
+        last = None
+        for i in range(6):
+            try:
+                return self._client.chat.completions.create(**kwargs)
+            except Exception as e:  # noqa: BLE001 — only retry known-transient classes; re-raise the rest
+                if not any(k in type(e).__name__ for k in transient):
+                    raise
+                last = e
+                time.sleep(min(2 ** i, 20))
+        raise last or RuntimeError("groq call failed after retries")  # exhausted retries
 
 
 def _extract_json(text: str) -> dict:

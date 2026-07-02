@@ -3,181 +3,294 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Kintsugi — self-healing Jam runtime</title>
+<title>Kintsugi — a self-healing runtime for AI-generated mini-apps</title>
 <style>
-  :root { --bg:#0b1020; --panel:#121933; --line:#26304f; --fg:#e8edff; --dim:#8b95bd;
-          --accent:#6366f1; --green:#22c55e; --red:#f43f5e; --amber:#f59e0b; }
-  * { box-sizing:border-box; }
-  body { margin:0; font-family:ui-sans-serif,system-ui,sans-serif; background:var(--bg); color:var(--fg); }
-  header { padding:16px 24px; border-bottom:1px solid var(--line); display:flex; gap:14px; align-items:baseline; }
-  header b { font-size:18px; } header span { color:var(--dim); font-size:13px; }
-  .wrap { display:grid; grid-template-columns:1fr 1fr; gap:0; height:calc(100vh - 61px); }
-  .col { padding:20px 24px; overflow:auto; }
-  .col.left { border-right:1px solid var(--line); }
-  .promptbar { display:flex; gap:8px; margin-bottom:16px; }
-  input[type=text] { flex:1; padding:12px 14px; border-radius:10px; border:1px solid var(--line);
-          background:var(--panel); color:var(--fg); font-size:14px; }
-  button { padding:12px 16px; border-radius:10px; border:1px solid var(--line); background:var(--accent);
-          color:white; font-weight:600; cursor:pointer; font-size:14px; }
-  button.ghost { background:var(--panel); }
-  button:disabled { opacity:.4; cursor:not-allowed; }
-  iframe { width:100%; height:520px; border:1px solid var(--line); border-radius:14px; background:#0f172a; }
-  .ladder { border:1px solid var(--line); border-radius:14px; background:var(--panel); padding:16px; }
-  .tier { display:flex; gap:10px; align-items:flex-start; padding:9px 0; border-bottom:1px dashed var(--line); }
-  .tier:last-child { border-bottom:0; }
-  .glyph { width:20px; font-weight:800; }
-  .tname { width:118px; font-weight:600; }
-  .tdetail { color:var(--dim); font-size:13px; flex:1; }
-  .cat { color:var(--amber); font-weight:700; font-size:12px; }
-  .pass .glyph { color:var(--green); } .fail .glyph { color:var(--red); }
-  .adv { opacity:.6; } .skip { opacity:.35; }
-  .banner { margin-top:14px; padding:12px 14px; border-radius:10px; font-weight:600; }
-  .banner.ok { background:rgba(34,197,94,.12); color:#86efac; border:1px solid rgba(34,197,94,.3); }
-  .banner.bad { background:rgba(244,63,94,.12); color:#fda4af; border:1px solid rgba(244,63,94,.3); }
-  .meta { color:var(--dim); font-size:12px; margin-top:10px; }
-  .heal { background:var(--green); }
-  .tag { font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:.08em; }
-  .benchrow { display:flex; gap:10px; align-items:center; margin:16px 0 10px; }
-  #benchimg { width:100%; border:1px solid var(--line); border-radius:12px; background:#fff; display:none; }
-  .verdict { font-weight:800; padding:4px 10px; border-radius:8px; }
-  .verdict.SHIP { background:rgba(34,197,94,.15); color:#86efac; }
-  .verdict.BLOCK { background:rgba(244,63,94,.15); color:#fda4af; }
+  :root{
+    --bg:#090d18; --bg2:#0c1223; --panel:#111a30; --panel2:#0e1526; --line:#243150;
+    --fg:#eaf0ff; --dim:#8994ba; --faint:#61708f;
+    --indigo:#6d75f4; --indigo-soft:#8b91f7; --gold:#f0b429; --gold-soft:#ffd774;
+    --green:#34d399; --red:#fb7185; --amber:#fbbf24;
+    --radius:16px; --shadow:0 10px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    background:radial-gradient(1200px 600px at 80% -10%, #14203c 0%, var(--bg) 55%) fixed, var(--bg);
+    color:var(--fg); line-height:1.5; -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--indigo-soft); text-decoration:none} a:hover{text-decoration:underline}
+  .wrap{max-width:1180px; margin:0 auto; padding:0 22px}
+
+  /* ---- top bar ---- */
+  header{border-bottom:1px solid var(--line); background:rgba(9,13,24,.7); backdrop-filter:blur(8px); position:sticky; top:0; z-index:10}
+  .bar{display:flex; align-items:center; gap:14px; padding:14px 0}
+  .mark{display:flex; align-items:center; gap:10px; font-weight:800; font-size:19px; letter-spacing:-.01em}
+  .seam{width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,var(--indigo),var(--gold));
+        box-shadow:0 0 18px rgba(240,180,41,.35)}
+  .bar .sub{color:var(--dim); font-size:13.5px; margin-left:2px}
+  .bar .spacer{flex:1}
+  .pill-badge{font-size:12px; color:var(--gold-soft); border:1px solid rgba(240,180,41,.35);
+        background:rgba(240,180,41,.08); padding:4px 10px; border-radius:999px; white-space:nowrap}
+  .gh{font-size:13px; color:var(--dim)}
+
+  /* ---- hero ---- */
+  .hero{padding:30px 0 8px}
+  .hero h1{font-size:26px; margin:0 0 8px; letter-spacing:-.02em; font-weight:800}
+  .hero h1 .accent{background:linear-gradient(90deg,var(--indigo-soft),var(--gold-soft));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero p{color:var(--dim); max-width:760px; margin:0 0 18px; font-size:15px}
+  .pipe{display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:6px}
+  .step{font-size:12.5px; padding:6px 11px; border-radius:999px; border:1px solid var(--line);
+        background:var(--panel2); color:#cdd6f4; white-space:nowrap}
+  .step.hl{border-color:rgba(240,180,41,.5); color:var(--gold-soft); background:rgba(240,180,41,.07)}
+  .arrow{color:var(--faint); font-size:12px}
+
+  /* ---- layout ---- */
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:22px}
+  @media(max-width:900px){ .grid{grid-template-columns:1fr} }
+  .card{background:linear-gradient(180deg,var(--panel),var(--panel2)); border:1px solid var(--line);
+        border-radius:var(--radius); padding:20px; box-shadow:var(--shadow)}
+  .kicker{font-size:12px; text-transform:uppercase; letter-spacing:.1em; color:var(--dim); font-weight:700; margin-bottom:12px; display:flex; align-items:center; gap:8px}
+  .kicker .num{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:6px;background:var(--indigo);color:#fff;font-size:12px}
+
+  /* ---- create panel ---- */
+  .row{display:flex; gap:8px}
+  input[type=text]{flex:1; padding:12px 14px; border-radius:11px; border:1px solid var(--line);
+        background:#0b1222; color:var(--fg); font-size:14.5px; outline:none}
+  input[type=text]:focus{border-color:var(--indigo)}
+  button{font:inherit; font-weight:650; cursor:pointer; border-radius:11px; border:1px solid transparent; padding:12px 16px; font-size:14px}
+  .btn-primary{background:var(--indigo); color:#fff; box-shadow:0 6px 16px rgba(109,117,244,.35)}
+  .btn-primary:hover{filter:brightness(1.08)}
+  .btn-heal{background:linear-gradient(135deg,var(--gold),#e0951a); color:#231a04}
+  .btn-heal:hover{filter:brightness(1.06)}
+  .btn-ghost{background:var(--panel); color:var(--fg); border-color:var(--line)}
+  button:disabled{opacity:.45; cursor:not-allowed; box-shadow:none; filter:none}
+  .toggle{display:flex; align-items:center; gap:9px; margin:11px 2px 4px; font-size:13px; color:var(--dim)}
+  .toggle input{accent-color:var(--gold)}
+  .toggle b{color:var(--gold-soft)}
+
+  /* phone-ish preview */
+  .stagewrap{margin-top:16px; display:flex; justify-content:center}
+  .phone{width:100%; max-width:400px; border:1px solid var(--line); border-radius:22px; overflow:hidden;
+         background:#0f172a; box-shadow:var(--shadow); position:relative}
+  .phone .top{height:30px; display:flex; align-items:center; justify-content:center; gap:6px; background:#0b1222; border-bottom:1px solid var(--line)}
+  .phone .top i{width:7px;height:7px;border-radius:50%;background:#33405f;display:inline-block}
+  iframe{width:100%; height:440px; border:0; background:#0f172a; display:block}
+  .stagelabel{font-size:11.5px; color:var(--dim); text-align:center; margin:9px 0 0}
+  .loading{position:absolute; inset:30px 0 0; display:none; place-items:center; background:rgba(11,18,34,.86); backdrop-filter:blur(2px)}
+  .loading.on{display:grid}
+  .spin{width:34px;height:34px;border-radius:50%;border:3px solid rgba(255,255,255,.15);border-top-color:var(--gold);animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .loading small{color:var(--dim); margin-top:10px; font-size:12.5px}
+
+  /* ---- ladder ---- */
+  .ladder{display:flex; flex-direction:column; gap:2px}
+  .tier{display:flex; gap:12px; align-items:flex-start; padding:12px 12px; border-radius:12px; border:1px solid transparent; transition:.2s}
+  .tier .glyph{width:24px;height:24px;flex:none;border-radius:7px;display:grid;place-items:center;font-weight:800;font-size:13px}
+  .tier.pass{background:rgba(52,211,153,.06); border-color:rgba(52,211,153,.22)}
+  .tier.pass .glyph{background:rgba(52,211,153,.16); color:var(--green)}
+  .tier.fail{background:rgba(251,113,133,.07); border-color:rgba(251,113,133,.28)}
+  .tier.fail .glyph{background:rgba(251,113,133,.16); color:var(--red)}
+  .tier.adv{opacity:.7}
+  .tier.adv .glyph{background:rgba(139,145,255,.14); color:var(--indigo-soft)}
+  .tier.skip{opacity:.4}
+  .tier.skip .glyph{background:#1a2440; color:var(--faint)}
+  .tier .tname{font-weight:700; font-size:13.5px}
+  .tier .tdetail{color:var(--dim); font-size:12.5px; margin-top:2px}
+  .tier .cat{color:var(--amber); font-weight:800; font-size:11.5px; letter-spacing:.04em}
+  .laddermeta{font-size:11px; color:var(--faint); text-transform:uppercase; letter-spacing:.08em; margin-bottom:10px}
+  .healrow{display:flex; align-items:center; gap:12px; margin-top:14px}
+  .repairnote{font-size:12.5px; color:var(--gold-soft)}
+  .banner{margin-top:14px; padding:13px 15px; border-radius:12px; font-weight:650; font-size:14px; display:none}
+  .banner.on{display:block}
+  .banner.ok{background:rgba(52,211,153,.12); color:#a7f3d0; border:1px solid rgba(52,211,153,.3)}
+  .banner.bad{background:rgba(251,113,133,.1); color:#fecdd3; border:1px solid rgba(251,113,133,.3)}
+  .metaline{color:var(--dim); font-size:12px; margin-top:9px}
+  .empty{color:var(--dim); font-size:13.5px; padding:14px 4px}
+
+  /* ---- gate ---- */
+  .gate{margin-top:18px}
+  .gatehead{display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:6px}
+  .verdict{font-weight:800; padding:5px 12px; border-radius:9px; font-size:13px; letter-spacing:.03em}
+  .verdict.SHIP{background:rgba(52,211,153,.16); color:#a7f3d0} .verdict.BLOCK{background:rgba(251,113,133,.16); color:#fecdd3}
+  .gate p{color:var(--dim); font-size:14px; max-width:820px}
+  .chartbox{margin-top:14px; border:1px solid var(--line); border-radius:14px; overflow:hidden; background:#fff}
+  .chartbox img{width:100%; display:block}
+  .realtag{font-size:11.5px; color:var(--gold-soft); border:1px solid rgba(240,180,41,.35); background:rgba(240,180,41,.08); padding:3px 9px; border-radius:999px}
+
+  footer{border-top:1px solid var(--line); margin-top:34px; padding:22px 0 40px; color:var(--dim); font-size:13px}
+  footer b{color:var(--fg)}
 </style>
 </head>
 <body>
-<header>
-  <b>Kintsugi</b>
-  <span>self-healing Jam-generation runtime · prompt → plan → generate → run/validate → repair → publish</span>
-</header>
+
+<header><div class="wrap bar">
+  <div class="mark"><span class="seam"></span>Kintsugi</div>
+  <span class="sub">a self-healing runtime for AI-generated mini-apps</span>
+  <span class="spacer"></span>
+  <span class="pill-badge" id="modebadge">● live · Groq</span>
+  <a class="gh" href="https://github.com/Inova117/Kintsugi" target="_blank" rel="noopener">GitHub ↗</a>
+</div></header>
 
 <div class="wrap">
-  <div class="col left">
-    <div class="promptbar">
-      <input id="prompt" type="text" value="What kind of cursed houseplant are you?">
-      <button id="gen" onclick="generate()">Generate</button>
-    </div>
-    <label class="tag" style="display:block; margin:-8px 0 12px;">
-      <input type="checkbox" id="real" checked> real AI (Groq) — uncheck for the offline scripted demo
-    </label>
-    <div class="tag" id="stage">the generated Jam renders here</div>
-    <iframe id="stageframe" sandbox="allow-scripts" title="Jam preview"></iframe>
 
-    <div class="benchrow">
-      <button class="ghost" onclick="runBench(false)">▶ Run release gate</button>
-      <button class="ghost" onclick="runBench(true)">⚠ Simulate weaker model</button>
-      <span id="verdict"></span>
+  <section class="hero">
+    <h1>Type an idea → get a <span class="accent">playable mini-app</span> that's guaranteed to actually work.</h1>
+    <p>An AI generates an interactive quiz from your prompt. Then Kintsugi <b>runs it in a real browser</b>,
+       checks that every answer path reaches a valid result, and if anything is broken it makes the model
+       <b>repair it</b> and re-checks — until it works or it refuses to publish. Built for the exact problem
+       Sekai is hiring for: <b>creation quality &amp; reliability</b> of AI-generated content.</p>
+    <div class="pipe">
+      <span class="step">prompt</span><span class="arrow">→</span>
+      <span class="step">plan</span><span class="arrow">→</span>
+      <span class="step">generate</span><span class="arrow">→</span>
+      <span class="step hl">run &amp; validate</span><span class="arrow">→</span>
+      <span class="step hl">repair</span><span class="arrow">→</span>
+      <span class="step">publish</span>
     </div>
-    <img id="benchimg" alt="repair-lift benchmark">
+  </section>
+
+  <div class="grid">
+    <!-- CREATE -->
+    <section class="card">
+      <div class="kicker"><span class="num">1</span> create a jam</div>
+      <div class="row">
+        <input id="prompt" type="text" value="What kind of cursed houseplant are you?" placeholder="Type any idea…">
+        <button class="btn-primary" id="gen" onclick="generate()">Generate</button>
+      </div>
+      <label class="toggle"><input type="checkbox" id="real" checked>
+        use <b>real AI (Groq)</b> — uncheck for the instant offline demo</label>
+
+      <div class="stagewrap">
+        <div class="phone">
+          <div class="top"><i></i><i></i><i></i></div>
+          <iframe id="stageframe" sandbox="allow-scripts" title="Jam preview"></iframe>
+          <div class="loading" id="loading"><div class="spin"></div><small id="loadmsg">asking the model…</small></div>
+        </div>
+      </div>
+      <div class="stagelabel" id="stage">your generated mini-app appears here</div>
+      <div class="banner" id="banner"></div>
+      <div class="metaline" id="meta"></div>
+    </section>
+
+    <!-- VALIDATE -->
+    <section class="card">
+      <div class="kicker"><span class="num">2</span> validate &amp; self-heal</div>
+      <div class="laddermeta" id="laddermeta">the automated checks run here</div>
+      <div class="ladder" id="ladder"><div class="empty">Generate a Jam to watch it get validated — and healed if it's broken.</div></div>
+      <div class="healrow">
+        <button class="btn-heal" id="heal" onclick="heal()" disabled>🔧 Heal</button>
+        <span class="repairnote" id="repairnote"></span>
+      </div>
+    </section>
   </div>
 
-  <div class="col right">
-    <div class="tag">validation ladder</div>
-    <div class="ladder" id="ladder"><div class="tdetail">Generate a Jam to see the ladder.</div></div>
-    <div style="margin-top:14px; display:flex; gap:8px;">
-      <button class="heal" id="heal" onclick="heal()" disabled>🔧 Heal</button>
-      <span class="meta" id="repairnote"></span>
+  <!-- GATE -->
+  <section class="card gate">
+    <div class="kicker"><span class="num">3</span> quality gate &amp; repair-lift</div>
+    <div class="gatehead">
+      <span class="verdict SHIP">SHIP</span>
+      <span class="realtag">deterministic</span>
+      <span class="metaline" style="margin:0">16 seeded prompts · 25% → 100% valid across repair rounds · 0% unfixable</span>
     </div>
-    <div id="banner"></div>
-    <div class="meta" id="meta"></div>
-  </div>
+    <p>Before shipping a change, Kintsugi replays the pipeline over a suite of prompts with <b>injected
+       faults</b> (dead-ends, crashes, malformed output) and measures how many Jams end up valid after
+       0, 1, 2… automated repairs. Clears the bar → <b>SHIP</b>; a regression → <b>BLOCK</b>. This chart is
+       a <b>deterministic fault-injection suite</b> — it proves the repair loop heals every known failure
+       type and the gate blocks correctly, reproducible on any machine with no API key
+       (<code>kintsugi bench</code>).</p>
+    <p class="metaline" style="font-size:13px">On <b>live</b> models the same gate runs against real output
+       (<code>--real</code>). Measured on Groq's free <code>llama-3.1-8b</code>, roughly half the quizzes were
+       valid and the gate <b>BLOCKED</b> that config — exactly its job. (The stronger free 70B tier was
+       daily-rate-limited during testing, which is itself why the runtime is built to degrade gracefully.)</p>
+    <div class="chartbox"><img src="/static/repair_lift.png" alt="repair-lift chart"></div>
+  </section>
+
+  <footer class="">
+    <b>What is this?</b> A demo runtime that generates interactive "Jams" (quizzes), then guarantees they
+    work via real browser execution + an automatic repair loop, with a measured release gate.
+    &nbsp;·&nbsp; Everything above runs locally. &nbsp;·&nbsp;
+    <a href="https://github.com/Inova117/Kintsugi" target="_blank" rel="noopener">github.com/Inova117/Kintsugi</a>
+  </footer>
 </div>
 
 <script>
-let RUN = null;      // last /api/generate response
-let CURSOR = 0;      // which attempt is on screen
+let RUN=null, CURSOR=0;
 
-async function generate() {
-  const prompt = document.getElementById('prompt').value;
-  setBusy(true);
-  document.getElementById('banner').innerHTML = '';
-  document.getElementById('repairnote').textContent = '';
-  try {
-    const real = document.getElementById('real').checked;
-    const r = await fetch('/api/generate', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({prompt, real})
-    });
-    RUN = await r.json();
-    CURSOR = 0;
-    showAttempt();
-  } catch (e) {
-    document.getElementById('banner').innerHTML = '<div class="banner bad">request failed: '+e+'</div>';
-  } finally { setBusy(false); }
+async function generate(){
+  const prompt=document.getElementById('prompt').value.trim();
+  if(!prompt) return;
+  const real=document.getElementById('real').checked;
+  setLoading(true, real ? 'asking Groq to generate + validating in a real browser…' : 'generating (offline mock)…');
+  hide('banner'); document.getElementById('repairnote').textContent='';
+  try{
+    const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({prompt, real})});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    RUN=await r.json(); CURSOR=0; showAttempt();
+  }catch(e){
+    document.getElementById('ladder').innerHTML='<div class="empty">Request failed: '+e+'</div>';
+  }finally{ setLoading(false); }
 }
 
-function showAttempt() {
-  const a = RUN.attempts[CURSOR];
-  document.getElementById('stageframe').srcdoc = a.html;
-  document.getElementById('stage').textContent =
-    (CURSOR === 0 ? 'first draft' : 'repair round ' + CURSOR) + ' · ' + RUN.title;
+function showAttempt(){
+  const a=RUN.attempts[CURSOR];
+  document.getElementById('stageframe').srcdoc=a.html;
+  document.getElementById('stage').textContent=(CURSOR===0?'first draft':'repair round '+CURSOR)+' · '+RUN.title;
+  document.getElementById('laddermeta').textContent='engine: '+a.engine+'  ·  '+(CURSOR===0?'first draft':'after repair '+CURSOR);
   renderLadder(a);
-  const more = CURSOR < RUN.attempts.length - 1;
-  document.getElementById('heal').disabled = !(!a.passed && more);
-  document.getElementById('repairnote').textContent =
-    (!a.passed && more) ? 'click Heal — the agent will patch and re-validate' : '';
-  updateBanner(a, more);
+  const more=CURSOR<RUN.attempts.length-1;
+  const canHeal=!a.passed && more;
+  const hb=document.getElementById('heal'); hb.disabled=!canHeal;
+  document.getElementById('repairnote').textContent=canHeal?'↙ it broke — click Heal to let the model fix it':'';
+  updateBanner(a,more);
 }
 
-function heal() {
-  const prev = RUN.attempts[CURSOR];
-  document.getElementById('repairnote').textContent = '🔧 repairing: ' + prev.summary + ' …';
-  setTimeout(() => { CURSOR++; showAttempt(); }, 550);  // small beat so the fix reads as an action
+function heal(){
+  const prev=RUN.attempts[CURSOR];
+  document.getElementById('repairnote').textContent='🔧 repairing: '+prev.summary+' …';
+  document.getElementById('heal').disabled=true;
+  setTimeout(()=>{CURSOR++; showAttempt();}, 650);
 }
 
-function renderLadder(a) {
-  const order = ['STRUCTURE','RENDER','PLAYTHROUGH','JUDGE'];
-  let html = '<div class="tag" style="margin-bottom:8px;">engine: '+a.engine+'</div>';
-  for (const t of a.tiers) {
-    const cls = t.advisory ? 'adv' : (t.passed ? 'pass' : 'fail');
-    const glyph = t.passed ? '✓' : '✗';
-    const cat = t.category ? '<span class="cat">'+t.category+'</span> ' : '';
-    html += '<div class="tier '+cls+'"><div class="glyph">'+glyph+'</div>'+
-            '<div class="tname">'+t.tier+(t.advisory?' <span class="tag">adv</span>':'')+'</div>'+
-            '<div class="tdetail">'+cat+t.detail+'</div></div>';
+function renderLadder(a){
+  let h='';
+  for(const t of a.tiers){
+    const cls=t.advisory?'adv':(t.passed?'pass':'fail');
+    const g=t.passed?'✓':'✗';
+    const cat=t.category?'<span class="cat">'+t.category+'</span> ':'';
+    h+='<div class="tier '+cls+'"><div class="glyph">'+g+'</div><div>'+
+       '<div class="tname">'+t.tier+(t.advisory?' · advisory':'')+'</div>'+
+       '<div class="tdetail">'+cat+t.detail+'</div></div></div>';
   }
-  for (const s of a.not_reached) {
-    html += '<div class="tier skip"><div class="glyph">·</div><div class="tname">'+s+'</div>'+
-            '<div class="tdetail">not reached</div></div>';
+  for(const s of a.not_reached)
+    h+='<div class="tier skip"><div class="glyph">·</div><div><div class="tname">'+s+'</div>'+
+       '<div class="tdetail">not reached</div></div></div>';
+  document.getElementById('ladder').innerHTML=h;
+}
+
+function updateBanner(a,more){
+  const b=document.getElementById('banner');
+  if(a.passed){
+    const rounds=RUN.rounds_to_valid;
+    b.className='banner on ok';
+    b.innerHTML=rounds?('✅ Healed in '+rounds+' repair round'+(rounds>1?'s':'')+' — every result reachable, published.')
+                      :'✅ Valid on the first try — every result reachable, published.';
+  }else if(!more){
+    b.className='banner on bad';
+    b.innerHTML='⛔ Did not converge ('+RUN.category+') — nothing published (it refuses to ship a broken Jam).';
+  }else{
+    b.className='banner on bad'; b.innerHTML='✗ '+a.summary;
   }
-  document.getElementById('ladder').innerHTML = html;
+  document.getElementById('meta').textContent=RUN.tokens+' tokens · '+Math.round(RUN.latency_ms)+' ms';
 }
 
-function updateBanner(a, more) {
-  const b = document.getElementById('banner');
-  const m = document.getElementById('meta');
-  if (a.passed) {
-    const rounds = RUN.rounds_to_valid;
-    b.innerHTML = '<div class="banner ok">✅ '+(rounds ? 'Healed in '+rounds+' repair round(s)' : 'Valid on first try')+
-                  ' — every persona reachable, published.</div>';
-  } else if (!more) {
-    b.innerHTML = '<div class="banner bad">⛔ Did not converge ('+RUN.category+') — nothing published '+
-                  '(last-valid guarantee held).</div>';
-  } else {
-    b.innerHTML = '<div class="banner bad">✗ '+a.summary+'</div>';
-  }
-  m.textContent = RUN.tokens + ' tokens · ' + RUN.latency_ms.toFixed(0) + ' ms wall';
+function setLoading(on,msg){
+  document.getElementById('loading').classList.toggle('on',on);
+  if(msg) document.getElementById('loadmsg').textContent=msg;
+  const g=document.getElementById('gen'); g.disabled=on; g.textContent=on?'Generating…':'Generate';
 }
-
-async function runBench(degrade) {
-  document.getElementById('verdict').innerHTML = '<span class="meta">running gate…</span>';
-  const r = await fetch('/api/bench', {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({degrade: !!degrade})
-  });
-  const j = await r.json();
-  document.getElementById('verdict').innerHTML =
-    '<span class="verdict '+j.verdict+'">'+j.verdict+'</span> ' +
-    '<span class="meta">post-repair valid '+(j.valid_curve[String(j.max_repairs)]*100).toFixed(0)+
-    '% · non-conv '+(j.non_convergence_rate*100).toFixed(0)+'%</span>';
-  const img = document.getElementById('benchimg');
-  img.src = '/bench.png?t=' + Date.now();
-  img.style.display = 'block';
-}
-
-function setBusy(b) {
-  document.getElementById('gen').disabled = b;
-  document.getElementById('gen').textContent = b ? 'Generating…' : 'Generate';
-}
+function hide(id){const e=document.getElementById(id); e.className='banner';}
 </script>
 </body>
 </html>

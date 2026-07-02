@@ -104,7 +104,7 @@ def run_bench(
     outcomes: List[CaseOutcome] = []
     shared_real = select_real_model() if not mock else None
 
-    for case in cases_in:
+    for idx, case in enumerate(cases_in):
         prompt = case["prompt"]
         # `degrade` simulates a weaker model/prompt: one extra defect per case. Offline it's
         # an injected bug; in --real mode you'd instead point KINTSUGI_*_MODEL at a cheaper tier.
@@ -112,21 +112,29 @@ def run_bench(
         if degrade:
             pinned = pinned + ["dead_end"]
         model = MockModel(bugs=pinned) if mock else shared_real
-        res = run(
-            prompt, model,
-            max_repairs=max_repairs,
-            out_dir=out_dir / "runs",
-            prefer_browser=prefer_browser,
-            run_judge=False,  # advisory tier off in the gate — deterministic tiers own pass/fail
-            emit=None,
-        )
-        first_fail = res.attempts[0].report.category if res.attempts else None
+        try:
+            res = run(
+                prompt, model,
+                max_repairs=max_repairs,
+                out_dir=out_dir / "runs",
+                prefer_browser=prefer_browser,
+                run_judge=False,  # advisory tier off in the gate — deterministic tiers own pass/fail
+                emit=None,
+            )
+            rounds = res.rounds_to_valid
+            first_fail = res.attempts[0].report.category if res.attempts else None
+            first_fail = first_fail.value if first_fail else None
+        except Exception as e:  # never let one case kill the batch
+            rounds, first_fail = None, "PROVIDER_ERROR"
+            print(f"[bench] case {idx + 1} errored: {str(e)[:120]}", flush=True)
+        status = f"valid@{rounds}" if rounds is not None else "UNFIXED"
+        print(f"[bench] {idx + 1}/{len(cases_in)}  {status:9} {prompt[:46]}", flush=True)
         outcomes.append(
             CaseOutcome(
                 prompt=prompt,
                 adversarial=bool(case.get("adversarial")),
-                rounds_to_valid=res.rounds_to_valid,
-                first_failure=first_fail.value if first_fail else None,
+                rounds_to_valid=rounds,
+                first_failure=first_fail,
             )
         )
 

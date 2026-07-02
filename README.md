@@ -104,6 +104,16 @@ That's the whole thing. `.env` is gitignored, so **your key is never committed**
 > **Security:** never paste a real key anywhere public, and rotate it if you do. The key lives
 > only in `.env` on your machine.
 
+**A note on the free tier (honesty matters).** Groq's free tier is real but rate-limited: the strong
+`llama-3.3-70b` model has a ~100k-token/day cap, and the small `llama-3.1-8b` model — while it has a
+larger budget — produces quizzes with enough edge-case dead-ends that the (correct) validator rejects
+about half of them, and 8B isn't strong enough to reliably repair its own output. So a *pretty* live
+repair-lift chart needs either paid capacity or the 70B tier with budget to spare. The **deterministic
+fault-injection suite** exists precisely so the harness's behavior can be demonstrated reproducibly and
+for free, independent of any provider's quota. Hitting these limits is also what motivated the
+graceful-degradation work: a rate-limited provider produces a `PROVIDER_ERROR` and a clean "did not
+converge" — never a crash.
+
 ---
 
 ## What you actually see
@@ -181,9 +191,15 @@ HTML ──► validate (the ladder) ──────────────�
 - **Real execution feedback** ([`validate.py`](kintsugi/validate.py)): `PLAYTHROUGH` drives
   one maximizing answer path **per persona** in a headless browser and asserts each reaches a
   non-empty result — catching runtime dead-ends static checks miss.
-- **The release gate** ([`bench.py`](kintsugi/bench.py)): replays the loop over a golden set
-  (half deliberately adversarial) at N=0..4 repairs; ships only if post-repair valid ≥ 90%
-  and non-convergence ≤ 3%.
+- **The release gate** ([`bench.py`](kintsugi/bench.py)) runs in two modes:
+  - **Deterministic fault-injection** (`kintsugi bench`): replays the loop over a golden set with
+    *injected* faults (dead-ends, crashes, malformed output) at N=0..4 repairs. Reproducible, free,
+    no API key — it proves the repair loop heals every known failure type and the gate ships/blocks
+    correctly (25% → 100% valid across rounds). This is a standard eval technique and is the chart
+    shown in the web UI.
+  - **Live model** (`kintsugi bench --real --browser`): the same gate against real model output.
+    Ships only if post-repair valid ≥ 90% and non-convergence ≤ 3%. On Groq's free `llama-3.1-8b`
+    it measured ~1-in-2 quizzes valid and correctly **BLOCKED** — see the free-tier note below.
 
 ## Repo layout
 

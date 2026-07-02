@@ -125,13 +125,18 @@ def run(
         try:
             spec = model.plan(plan_prompt, trace)
             break
-        except (ValidationError, ValueError) as e:
+        except (ValidationError, ValueError) as e:  # contract violation -> feed back and retry
             _emit({"type": "plan_error", "attempt": plan_try, "error": str(e)[:300]})
             plan_prompt = (
                 f"{prompt}\n\nYour previous spec was REJECTED: {str(e)[:300]}\n"
                 "EVERY outcome any option scores toward MUST have a matching persona. "
                 "Return corrected JSON."
             )
+        except Exception as e:  # provider/API error (rate limit, network) -> abort gracefully
+            result.final_category = FailureCategory.PROVIDER_ERROR
+            _emit({"type": "model_error", "stage": "plan", "error": str(e)[:200]})
+            _emit(done_event(False, category=FailureCategory.PROVIDER_ERROR.value))
+            return result
     else:  # never broke out -> all attempts failed the contract
         result.final_category = FailureCategory.SCHEMA_CONTRACT
         _emit(done_event(False, category=FailureCategory.SCHEMA_CONTRACT.value))
@@ -141,7 +146,14 @@ def run(
            "outcomes": sorted(spec.outcomes_with_screens)})
 
     # --- generate + first validation ---
-    html = model.generate(spec, trace)
+    try:
+        html = model.generate(spec, trace)
+    except Exception as e:  # provider/API error before we have anything -> abort gracefully
+        result.final_category = FailureCategory.PROVIDER_ERROR
+        _emit({"type": "model_error", "stage": "generate", "error": str(e)[:200]})
+        _emit(done_event(False, category=FailureCategory.PROVIDER_ERROR.value))
+        trace.save(out_dir / run_id)
+        return result
     report = _validate(html)
     result.attempts.append(Attempt(0, html, report))
     _emit(_report_event(0, report))
@@ -152,7 +164,11 @@ def run(
         i += 1
         _emit({"type": "repair", "attempt": i, "resolving": report.summary(),
                "category": report.category.value if report.category else None})
-        html = model.repair(html, spec, report, trace, attempt=i)
+        try:
+            html = model.repair(html, spec, report, trace, attempt=i)
+        except Exception as e:  # provider died mid-repair -> stop looping, keep last valid (if any)
+            _emit({"type": "model_error", "stage": "repair", "error": str(e)[:200]})
+            break
         report = _validate(html)
         result.attempts.append(Attempt(i, html, report))
         _emit(_report_event(i, report))
