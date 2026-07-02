@@ -53,11 +53,11 @@
 <div class="wrap">
   <div class="col left">
     <div class="promptbar">
-      <input id="prompt" type="text" value="the cursed quiz — which chaos gremlin are you?">
+      <input id="prompt" type="text" value="What kind of cursed houseplant are you?">
       <button id="gen" onclick="generate()">Generate</button>
     </div>
     <label class="tag" style="display:block; margin:-8px 0 12px;">
-      <input type="checkbox" id="real"> use real model (Groq) — needs a key in .env; otherwise uses the mock
+      <input type="checkbox" id="real" checked> real AI (Groq) — uncheck for the offline scripted demo
     </label>
     <div class="tag" id="stage">the generated Jam renders here</div>
     <iframe id="stageframe" sandbox="allow-scripts" title="Jam preview"></iframe>
